@@ -1,2 +1,3 @@
 # face_recogntion
-python numpy
+
+Project is in the folder "project". Exercises of TD are in the folder "td"
