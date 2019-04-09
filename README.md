@@ -1,3 +1,3 @@
 # face_recogntion
 
-Project is in the folder "project". Exercises of TD are in the folder "td"
+We use python (numpy, skimage, sklearn) to detect the human faces in the images.
