@@ -116,10 +116,22 @@ for i in range(n_train):
 y_train = np.concatenate((np.ones(n_pos) , -np.ones(n_neg)))
 
 # 6.2 training
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
+from sklearn.calibration import CalibratedClassifierCV
+
 clf_hog = LinearSVC()
 clf_hog.fit(x_train_hog,y_train)
+# Parce que la fonction LinearSVC ne predicte que -1 ou 1 pour une image
+# donc, on utilise CalibratedClassifierCV pour génerer la probabilité
+# que une image est une visage.
+
+clf_proba = CalibratedClassifierCV(
+        base_estimator=LinearSVC(),
+        method='isotonic', cv=5
+        )
+clf_proba.fit(x_train_hog,y_train)
 
 # 6.3 sauvegarder la classifieur
 from sklearn.externals import joblib
 joblib.dump(clf_hog, 'clf_hog_v1.pkl')
+joblib.dump(clf_proba, 'clf_proba_v1.pkl')
