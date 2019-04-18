@@ -46,12 +46,12 @@ h_fixed = int(ratio_HL * l_fixed)
 
 data_train_pos = []
 for img in img_target:
-    im = transform.resize(img,(h_fixed,l_fixed))
+    im = transform.resize(img,(h_fixed,l_fixed), mode='reflect', anti_aliasing=True)
     data_train_pos.append(im)
 
 # 5. générer les exemples négatives
 # 5.1. calculer l'aire recouvrement entre l'images positif et l'image généré
-def calcul_aire_recouvrement(line1, line2):
+def calcul_aire_recouvrement2(line1, line2):
     H = int(max(line1[0]+line1[2], line2[0]+line2[2]))
     L = int(max(line1[1]+line1[3], line2[1]+line2[3]))
     bg1 = np.zeros((H, L))
@@ -65,6 +65,37 @@ def calcul_aire_recouvrement(line1, line2):
     uni = np.logical_or(bg1,bg2).sum()
     inter = np.logical_and(bg1, bg2).sum()
     return inter/uni
+
+def calcul_aire_recouvrement(fenetre_a, fenetre_b):
+    IoU = 0
+    position_h_a = fenetre_a[0]
+    position_l_a = fenetre_a[1]
+    h_a = fenetre_a[2]
+    l_a = fenetre_a[3]
+    
+    position_h_b = fenetre_b[0]
+    position_l_b = fenetre_b[1]
+    h_b = fenetre_b[2]
+    l_b = fenetre_b[3]
+    
+    #Intersection de hauteur
+    start_h = min(position_h_a, position_h_b)
+    end_h = max(position_h_a+h_a, position_h_b+h_b)
+    intersec_h =  h_a + h_b - (end_h-start_h)
+    
+    #Intersection de largeur
+    start_l = min(position_l_a, position_l_b)
+    end_l = max(position_l_a+l_a, position_l_b+l_b)
+    intersec_l = l_a+l_b-(end_l-start_l)
+        
+    #Si Intersection >0 on calcule IoU
+    if intersec_h > 0 and intersec_l > 0:
+        intersec_area = intersec_h * intersec_l
+        aire_a = h_a*l_a
+        aire_b = h_b*l_b
+        IoU = intersec_area/(aire_a+aire_b-intersec_area)
+    return IoU
+
 
 # 5.2  générer les exemples négatives
 # Si l'aire recouvrement > 0.5, alors cette image est positive 
@@ -81,22 +112,33 @@ for i in range(len(img_raw)):
     while nb_img_neg < 10:
         # obtenir le coordonnées (ligne, colonne) du coin supérieure gauche de la boîte
         # position_h, position_l et la taille de hauteur h aléatoirement
-        position_h = int(np.random.uniform(0,H))
-        position_l = int(np.random.uniform(0,L))
-        h = int(np.random.uniform(int(H/5),int(H/2))) # C'est difficile de choisir la bonne taille
-        l = int(h/ratio_HL)
+        isValide = False
+        while not isValide:
+            position_h = int(np.random.uniform(0,H))
+            h = int(np.random.uniform(int(H/5),int(H/2)))# C'est difficile de choisir la bonne taille 
+            if position_h+h > H:
+                continue
+            position_l = int(np.random.uniform(0,L))
+            l = int(h/ratio_HL)
+            if position_l+l > L:
+                continue
+            isValide = True
         img_atr = np.array([position_h, position_l, h, l])
         is_pos = False
         for face in exemples_pos:
             aire_re = calcul_aire_recouvrement(face[1:5], img_atr)
-            if aire_re > 0.1:
-                nb_cover = True
+            if aire_re > 0.5:
+                is_pos = True
+                break
         if is_pos == False:
             img_neg = image[position_h: position_h + h, position_l: position_l + l]
-            img_neg = transform.resize(img_neg, (h_fixed, l_fixed))
-            data_train_neg.append(img_neg)
-            nb_img_neg += 1
-
+            # Vérification pour les images peu contrastées
+            if np.var(img_neg) > 0.001:
+                img_neg = transform.resize(img_neg, (h_fixed, l_fixed))
+                data_train_neg.append(img_neg)
+                nb_img_neg += 1
+                #io.imsave("./face_recogntion/neg/%d_%d.jpg"%(i,nb_img_neg), img_neg)
+            
 # 6. Apprendre un classifieur de visage 
 data_train = data_train_pos + data_train_neg
 train = np.array(data_train)
@@ -113,7 +155,7 @@ n_dim = 8424
 x_train_hog = np.zeros((n_train, n_dim))
 for i in range(n_train):
     x_train_hog[i,:] = hog(train[i,:,:], block_norm='L2-Hys')     
-y_train = np.concatenate((np.ones(n_pos) , -np.ones(n_neg)))
+y_train = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
 
 # 6.2 training
 from sklearn.svm import LinearSVC, SVC
