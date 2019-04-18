@@ -14,6 +14,7 @@ import numpy as np
 from sklearn.externals import joblib
 clf = joblib.load('clf_hog_v1.pkl')
 clf_proba = joblib.load('clf_proba_v1.pkl')
+clf_svc = joblib.load('clf_svc.pkl')
 
 # 1. obtenir les images originales
 from skimage import io, util, color, transform
@@ -82,13 +83,12 @@ def execute_fenetre_glissante(img, nb_img):
             o_h = step_h * i
             o_l = step_l * j
             img_fenetre = img[o_h: o_h + h_fixed, o_l: o_l + l_fixed]
-            x_hog[idx,:] = hog(img_fenetre, block_norm='L2-Hys')
-            x_predict = clf.predict(x_hog)
-            
-            if (x_predict[idx] == 1):
+            x_hog[idx,:] = hog(img_fenetre, block_norm='L2-Hys', transform_sqrt=True)
+            x_predict = clf_svc.predict(x_hog[idx].reshape(1, -1))
+            if (x_predict == 1):
                 # obtenir le score de détection
-                x_predict_proba = clf_proba.predict_proba(x_hog)
-                score = x_predict_proba[idx][1]
+                x_predict_proba = clf_svc.decision_function(x_hog[idx].reshape(1, -1))
+                score = x_predict_proba[0]
                 # stocker les informations de la img_fenetre
                 # il faut faire attention sur la format de la première élément !
                 face = np.array([nb_img, int(o_h), int(o_l), int(h_fixed), int(l_fixed), score])
@@ -129,6 +129,7 @@ def predict_img(img, nb_img):
     faces_best = np.empty((0, 6))
     if len(faces_candidat) > 0:
         faces_best = select_meilleurs(faces_candidat) 
+        faces_best = remove_overlap(faces_best)
     return faces_best
 
 # Remove overlap window which can not be eliminated by IoU 
@@ -169,6 +170,6 @@ def draw_int(I, coors):
             Irgb[coor[1]+coor[3],column,:] = [0, 1, 0]
     return Irgb
 
-pred_faces = predict_img(img_raw[1], 1)
+pred_faces = predict_img(img_raw[9], 1)
 plt.figure()
-plt.imshow(draw_int(img_raw[1], pred_faces[:, 0:5].astype(int)))
+plt.imshow(draw_int(img_raw[9], pred_faces[:, 0:5].astype(int)))
