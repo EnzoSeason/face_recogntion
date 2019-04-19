@@ -64,34 +64,25 @@ from skimage.feature import hog
 def execute_fenetre_glissante(img, nb_img):  
     h_fixed = 120
     l_fixed = 80
-    n_dim = 8424
     # On utilise une image pour créer l'algo
-    img = np.array(img)
-    # créer 30 fenetres pour chaque ligne et colonne   
-    nbFenetre = 20
-    step_h = int(np.floor((img.shape[0] - h_fixed)/nbFenetre))
-    step_l = int(np.floor((img.shape[1] - l_fixed)/nbFenetre))
-    n_test = nbFenetre * nbFenetre
-    x_hog = np.zeros((n_test, n_dim))
+    img = np.array(img)  
     idx = 0
     faces_predicts = np.empty((0, 6))
     # 2.1 un itération pour trouver tous les fênetres qui pouvent obtenir les visgae.
-    for i in range(nbFenetre):
-        for j in range(nbFenetre):
+    for h in range(0, img.shape[0]-h_fixed, 30):
+        for l in range(0, img.shape[1]-l_fixed, 20):
             # coordonnées (ligne, colonne) du coin supérieure gauche de la boîte
             # Ils sont (o_h, o_l)
-            o_h = step_h * i
-            o_l = step_l * j
-            img_fenetre = img[o_h: o_h + h_fixed, o_l: o_l + l_fixed]
-            x_hog[idx,:] = hog(img_fenetre, block_norm='L2-Hys', transform_sqrt=True)
-            x_predict = clf_svc.predict(x_hog[idx].reshape(1, -1))
+            img_fenetre = img[h: h + h_fixed, l: l + l_fixed]
+            feature_hog = hog(img_fenetre, block_norm='L2-Hys', transform_sqrt=True)
+            x_predict = clf_svc.predict(feature_hog.reshape(1, -1))
             if (x_predict == 1):
                 # obtenir le score de détection
-                x_predict_proba = clf_svc.decision_function(x_hog[idx].reshape(1, -1))
+                x_predict_proba = clf_svc.decision_function(feature_hog.reshape(1, -1))
                 score = x_predict_proba[0]
                 # stocker les informations de la img_fenetre
                 # il faut faire attention sur la format de la première élément !
-                face = np.array([nb_img, int(o_h), int(o_l), int(h_fixed), int(l_fixed), score])
+                face = np.array([nb_img, int(h), int(l), int(h_fixed), int(l_fixed), score])
                 faces_predicts = np.concatenate((faces_predicts, face.reshape(1,6)))
                 idx += 1    
     return faces_predicts
@@ -106,7 +97,7 @@ def select_meilleurs(faces_candidat):
             f1 = np.copy(img_face[1:5])
             f2 = np.copy(faces_sort[i][1:5])
             aire = calcul_aire_recouvrement(f1,f2)
-            if aire > 0.5:
+            if aire > 0.1:
                 new_face = False
                 break
         if new_face == True:
@@ -119,44 +110,18 @@ def predict_img(img, nb_img):
     ratios = [0.3, 0.6, 0.8, 1, 1.2, 1.5]    
     faces_candidat = np.empty((0,6))
     for ratio in ratios:
-        print(ratio)
         img_temp = rescale(img, ratio, multichannel=False,
-                           mode='constant', anti_aliasing=True)
+                           mode='reflect', anti_aliasing=True)
         faces = execute_fenetre_glissante(img_temp, nb_img)
         if faces is not None:
             faces[:, 1:5] = (faces[:, 1:5]/ratio).astype(int)
             faces_candidat = np.concatenate((faces_candidat, faces))
     faces_best = np.empty((0, 6))
     if len(faces_candidat) > 0:
-        faces_best = select_meilleurs(faces_candidat) 
-        faces_best = remove_overlap(faces_best)
+        faces_best = select_meilleurs(faces_candidat)
+        print(faces_best)
     return faces_best
 
-# Remove overlap window which can not be eliminated by IoU 
-def remove_overlap(faces_predicts):
-    if faces_predicts is None :
-        return
-    faces_sort = np.array(faces_predicts[np.argsort(faces_predicts[:,5])])
-    faces = []
-    faces.append(faces_sort[len(faces_sort)-1])
-    for i in range(len(faces_sort)-2, -1, -1):
-        new_face = True
-        for img_face in faces:
-            down_left_face = img_face[1]+img_face[3]
-            up_right_face = img_face[2]+img_face[4]
-            down_lef_new = faces_sort[i, 1] + faces_sort[i, 3]
-            up_right_new = faces_sort[i, 2] + faces_sort[i, 4]
-            if np.all(np.less_equal(img_face[1:3], faces_sort[i, 1:3])):
-                if down_left_face>=down_lef_new and up_right_face>=up_right_new:
-                    new_face = False
-            elif np.all(np.less_equal(faces_sort[i, 1:3], img_face[1:3])): 
-                if down_left_face<=down_lef_new and up_right_face<=up_right_new:
-                    new_face = False
-        if new_face == True:
-            faces.append(faces_sort[i])
-    
-    return np.array(faces)
- 
 #plot
 import matplotlib.pyplot as plt
 def draw_int(I, coors):
@@ -170,6 +135,28 @@ def draw_int(I, coors):
             Irgb[coor[1]+coor[3],column,:] = [0, 1, 0]
     return Irgb
 
-pred_faces = predict_img(img_raw[9], 1)
+pred_faces = predict_img(img_raw[34], 1)
 plt.figure()
-plt.imshow(draw_int(img_raw[9], pred_faces[:, 0:5].astype(int)))
+plt.imshow(draw_int(img_raw[34], pred_faces[:, 0:5].astype(int)))
+
+def extract_face(img, coor, path):
+    ligne = int(coor[1])
+    colonne = int(coor[2])
+    h = int(coor[3])
+    l = int(coor[4])
+    face = np.zeros((h, l))
+    for i in np.arange(ligne, ligne+h):
+        for j in np.arange(colonne, colonne+l):
+            face[i-ligne, j-colonne] = img[i, j]
+    #Perform Gaussian smoothing to avoid aliasing artifacts
+    io.imsave(path, face)
+    return 0
+
+
+
+for i in np.arange(20,100):
+        print("----" + str(i) + "-------")
+        i_faces = predict_img(img_raw[i], i)
+        if i_faces is not None:    
+            for j in range(len(i_faces)):
+                extract_face(img_raw[i], i_faces[j, 0:6], './faces/%04d_%d.jpg'%(i,j))
