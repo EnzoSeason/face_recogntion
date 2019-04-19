@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.externals import joblib
 clf_LinearSVC = joblib.load('clf_LinearSVC_v1.pkl')
 clf_rf = joblib.load('clf_rf_v1.pkl')
-
+clf_svc = joblib.load('clf_svc_v1.pkl')
 # 1. obtenir les images originales
 from skimage import io, util, color
 img_raw = []
@@ -63,6 +63,8 @@ def execute_fenetre_glissante(clf_name, img, nb_img):
         clf = clf_LinearSVC
     if clf_name == 'rf':
         clf = clf_rf
+    if clf_name == 'svc':
+        clf = clf_svc
     h_fixed = 120
     l_fixed = 80
     # On utilise une image pour créer l'algo
@@ -70,8 +72,8 @@ def execute_fenetre_glissante(clf_name, img, nb_img):
     idx = 0
     faces_predicts = np.empty((0, 6))
     # 2.1 un itération pour trouver tous les fênetres qui pouvent obtenir les visgae.
-    for h in range(0, img.shape[0]-h_fixed, 30):
-        for l in range(0, img.shape[1]-l_fixed, 20):
+    for h in range(0, img.shape[0]-h_fixed, 15):
+        for l in range(0, img.shape[1]-l_fixed, 10):
             # coordonnées (ligne, colonne) du coin supérieure gauche de la boîte
             # Ils sont (o_h, o_l)
             img_fenetre = img[h: h + h_fixed, l: l + l_fixed]
@@ -79,7 +81,7 @@ def execute_fenetre_glissante(clf_name, img, nb_img):
             x_predict = clf.predict(feature_hog.reshape(1, -1))
             if (x_predict == 1):
                 # obtenir le score de détection
-                if clf_name == 'LinearSVC':
+                if clf_name == 'LinearSVC' or clf_name == 'svc':
                     x_predict_proba = clf.decision_function(feature_hog.reshape(1, -1))
                     score = x_predict_proba[0]
                 if clf_name == 'rf':
@@ -112,7 +114,7 @@ def select_meilleurs(faces_candidat):
 
 def predict_img(clf, img, nb_img):
     from skimage.transform import  rescale
-    ratios = [0.3, 0.6, 0.8, 1, 1.2, 1.5]    
+    ratios = [0.1, 0.3, 0.6, 0.8, 1, 1.2, 1.5, 2]    
     faces_candidat = np.empty((0,6))
     for ratio in ratios:
         img_temp = rescale(img, ratio, multichannel=False,
@@ -140,9 +142,9 @@ def draw_int(I, coors):
             Irgb[coor[1]+coor[3],column,:] = [0, 1, 0]
     return Irgb
 
-pred_faces = predict_img('rf', img_raw[34], 1)
-plt.figure()
-plt.imshow(draw_int(img_raw[34], pred_faces[:, 0:5].astype(int)))
+#pred_faces = predict_img('rf', img_raw[34], 1)
+#plt.figure()
+#plt.imshow(draw_int(img_raw[34], pred_faces[:, 0:5].astype(int)))
 
 def extract_face(img, coor, path):
     ligne = int(coor[1])
@@ -157,10 +159,11 @@ def extract_face(img, coor, path):
     io.imsave(path, face)
     return 0
 
-
-for i in np.arange(0,50):
-        print("----" + str(i) + "-------")
-        i_faces = predict_img('rf',img_raw[i], i)
+faces = []
+for i in np.arange(326,327):
+        print("-------" + str(i) + "-------")
+        i_faces = predict_img('svc',img_raw[i], i)
+        faces.append(i_faces)
         if i_faces is not None:    
             for j in range(len(i_faces)):
                 extract_face(img_raw[i], i_faces[j, 0:6], './faces/%04d_%d.jpg'%(i,j))

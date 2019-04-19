@@ -24,6 +24,7 @@ for i in range(n_total):
     img_raw.append(im)
     
 # 2. obtenir les visages
+# On double les nnombre des visages par stoker les visages inversés.    
 img_target = []
 for img in label:
     idx = int(img[0])
@@ -32,7 +33,11 @@ for img in label:
     h = int(img[3])
     l = int(img[4])
     sub_img = img_raw[idx-1][o_h :o_h + h, o_l : o_l + l]
+    im_inverse = np.zeros(sub_img.shape)
+    for i in range(sub_img.shape[1]):
+        im_inverse[:,sub_img.shape[1]-i-1] = sub_img[:,i]
     img_target.append(sub_img)
+    img_target.append(im_inverse)
 
 # 3. Calculer le ratio moyen entre la hauteur et la largeur d'une boîte englobante de visages.
 mean_hl = np.mean(label[:,3]/label[:,4])
@@ -127,7 +132,7 @@ for i in range(len(img_raw)):
         is_pos = False
         for face in exemples_pos:
             aire_re = calcul_aire_recouvrement(face[1:5], img_atr)
-            if aire_re > 0.1:
+            if aire_re > 0.5:
                 is_pos = True
                 break
         if is_pos == False:
@@ -158,7 +163,7 @@ for i in range(n_train):
 y_train = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
 
 # 6.2 training
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 # 6.2.1 LinearSVC
 clf_LinearSVC = LinearSVC()
 clf_LinearSVC.fit(x_train_hog,y_train)
@@ -166,8 +171,12 @@ clf_LinearSVC.fit(x_train_hog,y_train)
 from sklearn.ensemble import RandomForestClassifier
 clf_rf = RandomForestClassifier()
 clf_rf.fit(x_train_hog,y_train)
+# 6.2.3 SVC
+clf_svc = SVC(gamma='auto')
+clf_svc.fit(x_train_hog,y_train)
 
 # 6.3 sauvegarder la classifieur
 from sklearn.externals import joblib
 joblib.dump(clf_LinearSVC, 'clf_LinearSVC_v1.pkl')
 joblib.dump(clf_rf, 'clf_rf_v1.pkl')
+joblib.dump(clf_svc, 'clf_svc_v1.pkl')
