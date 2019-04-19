@@ -127,7 +127,7 @@ for i in range(len(img_raw)):
         is_pos = False
         for face in exemples_pos:
             aire_re = calcul_aire_recouvrement(face[1:5], img_atr)
-            if aire_re > 0.5:
+            if aire_re > 0.1:
                 is_pos = True
                 break
         if is_pos == False:
@@ -154,26 +154,15 @@ n_dim = 8424
 
 x_train_hog = np.zeros((n_train, n_dim))
 for i in range(n_train):
-    x_train_hog[i,:] = hog(train[i,:,:], block_norm='L2-Hys')     
+    x_train_hog[i,:] = hog(train[i,:,:], block_norm='L2-Hys', transform_sqrt=True)     
 y_train = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
 
 # 6.2 training
-from sklearn.svm import LinearSVC, SVC
-from sklearn.calibration import CalibratedClassifierCV
+from sklearn.svm import LinearSVC
 
 clf_hog = LinearSVC()
 clf_hog.fit(x_train_hog,y_train)
-# Parce que la fonction LinearSVC ne predicte que -1 ou 1 pour une image
-# donc, on utilise CalibratedClassifierCV pour génerer la probabilité
-# que une image est une visage.
-
-clf_proba = CalibratedClassifierCV(
-        base_estimator=LinearSVC(),
-        method='isotonic', cv=5
-        )
-clf_proba.fit(x_train_hog,y_train)
 
 # 6.3 sauvegarder la classifieur
 from sklearn.externals import joblib
 joblib.dump(clf_hog, 'clf_hog_v1.pkl')
-joblib.dump(clf_proba, 'clf_proba_v1.pkl')

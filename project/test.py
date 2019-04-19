@@ -13,7 +13,6 @@ import numpy as np
 # 0. obtenir la classifier
 from sklearn.externals import joblib
 clf = joblib.load('clf_hog_v1.pkl')
-clf_proba = joblib.load('clf_proba_v1.pkl')
 
 # 1. obtenir les images originales
 from skimage import io, util, color, transform
@@ -21,14 +20,12 @@ img_raw = []
 n_total = 500
 for i in range(n_total):
     # lire les image, et convertir RGB images aux images gray
-    im = color.rgb2gray(io.imread("project_test/test/" + "%04d"%(i+1) + ".jpg"))
+    im = color.rgb2gray(io.imread("test/" + "%04d"%(i+1) + ".jpg"))
     # Convertir les images en valeurs
     im = util.img_as_float(im)
     img_raw.append(im)
 
 # 2. créer l'algo de "fênetre glissant"
-# Dans cette partie, on commence à utiliser une image.
-
 def calcul_aire_recouvrement(fenetre_a, fenetre_b):
     IoU = 0
     position_h_a = fenetre_a[0]
@@ -60,13 +57,14 @@ def calcul_aire_recouvrement(fenetre_a, fenetre_b):
     return IoU
 
 from skimage.feature import hog
+
 def execute_fenetre_glissante(img, nb_img):  
     h_fixed = 120
     l_fixed = 80
     n_dim = 8424
     # On utilise une image pour créer l'algo
     img = np.array(img)
-    # créer 30 fenetres pour chaque ligne et colonne   
+    # créer 20 fenetres pour chaque ligne et colonne   
     nbFenetre = 20
     step_h = int(np.floor((img.shape[0] - h_fixed)/nbFenetre))
     step_l = int(np.floor((img.shape[1] - l_fixed)/nbFenetre))
@@ -82,13 +80,13 @@ def execute_fenetre_glissante(img, nb_img):
             o_h = step_h * i
             o_l = step_l * j
             img_fenetre = img[o_h: o_h + h_fixed, o_l: o_l + l_fixed]
-            x_hog[idx,:] = hog(img_fenetre, block_norm='L2-Hys')
+            x_hog[idx,:] = hog(img_fenetre, block_norm='L2-Hys', transform_sqrt=True)
             x_predict = clf.predict(x_hog)
             
             if (x_predict[idx] == 1):
                 # obtenir le score de détection
-                x_predict_proba = clf_proba.predict_proba(x_hog)
-                score = x_predict_proba[idx][1]
+                x_predict_proba = clf.decision_function(x_hog)
+                score = x_predict_proba[idx]
                 # stocker les informations de la img_fenetre
                 # il faut faire attention sur la format de la première élément !
                 face = np.array([nb_img, int(o_h), int(o_l), int(h_fixed), int(l_fixed), score])
@@ -153,7 +151,6 @@ def remove_overlap(faces_predicts):
                     new_face = False
         if new_face == True:
             faces.append(faces_sort[i])
-    
     return np.array(faces)
  
 #plot
