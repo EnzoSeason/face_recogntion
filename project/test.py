@@ -10,10 +10,11 @@ import numpy as np
 
 # 0. obtenir la classifier
 from sklearn.externals import joblib
-clf = joblib.load('clf_hog_v1.pkl')
+clf_LinearSVC = joblib.load('clf_LinearSVC_v1.pkl')
+clf_rf = joblib.load('clf_rf_v1.pkl')
 
 # 1. obtenir les images originales
-from skimage import io, util, color, transform
+from skimage import io, util, color
 img_raw = []
 n_total = 500
 for i in range(n_total):
@@ -57,7 +58,11 @@ def calcul_aire_recouvrement(fenetre_a, fenetre_b):
     return IoU
 
 from skimage.feature import hog
-def execute_fenetre_glissante(img, nb_img):  
+def execute_fenetre_glissante(clf_name, img, nb_img):  
+    if clf_name == 'LinearSVC':
+        clf = clf_LinearSVC
+    if clf_name == 'rf':
+        clf = clf_rf
     h_fixed = 120
     l_fixed = 80
     # On utilise une image pour créer l'algo
@@ -74,8 +79,12 @@ def execute_fenetre_glissante(img, nb_img):
             x_predict = clf.predict(feature_hog.reshape(1, -1))
             if (x_predict == 1):
                 # obtenir le score de détection
-                x_predict_proba = clf.decision_function(feature_hog.reshape(1, -1))
-                score = x_predict_proba[0]
+                if clf_name == 'LinearSVC':
+                    x_predict_proba = clf.decision_function(feature_hog.reshape(1, -1))
+                    score = x_predict_proba[0]
+                if clf_name == 'rf':
+                    x_predict_proba = clf.predict_proba(feature_hog.reshape(1, -1))
+                    score = x_predict_proba[0][1]
                 # stocker les informations de la img_fenetre
                 # il faut faire attention sur la format de la première élément !
                 face = np.array([nb_img, int(h), int(l), int(h_fixed), int(l_fixed), score])
@@ -101,14 +110,14 @@ def select_meilleurs(faces_candidat):
     faces = np.array(faces)
     return faces
 
-def predict_img(img, nb_img):
+def predict_img(clf, img, nb_img):
     from skimage.transform import  rescale
     ratios = [0.3, 0.6, 0.8, 1, 1.2, 1.5]    
     faces_candidat = np.empty((0,6))
     for ratio in ratios:
         img_temp = rescale(img, ratio, multichannel=False,
                            mode='reflect', anti_aliasing=True)
-        faces = execute_fenetre_glissante(img_temp, nb_img)
+        faces = execute_fenetre_glissante(clf, img_temp, nb_img)
         if faces is not None:
             faces[:, 1:5] = (faces[:, 1:5]/ratio).astype(int)
             faces_candidat = np.concatenate((faces_candidat, faces))
@@ -131,7 +140,7 @@ def draw_int(I, coors):
             Irgb[coor[1]+coor[3],column,:] = [0, 1, 0]
     return Irgb
 
-pred_faces = predict_img(img_raw[34], 1)
+pred_faces = predict_img('rf', img_raw[34], 1)
 plt.figure()
 plt.imshow(draw_int(img_raw[34], pred_faces[:, 0:5].astype(int)))
 
@@ -149,10 +158,9 @@ def extract_face(img, coor, path):
     return 0
 
 
-
-for i in np.arange(20,100):
+for i in np.arange(0,50):
         print("----" + str(i) + "-------")
-        i_faces = predict_img(img_raw[i], i)
+        i_faces = predict_img('rf',img_raw[i], i)
         if i_faces is not None:    
             for j in range(len(i_faces)):
                 extract_face(img_raw[i], i_faces[j, 0:6], './faces/%04d_%d.jpg'%(i,j))

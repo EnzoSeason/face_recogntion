@@ -159,10 +159,15 @@ y_train = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
 
 # 6.2 training
 from sklearn.svm import LinearSVC
-
-clf_hog = LinearSVC()
-clf_hog.fit(x_train_hog,y_train)
+# 6.2.1 LinearSVC
+clf_LinearSVC = LinearSVC()
+clf_LinearSVC.fit(x_train_hog,y_train)
+# 6.2.2 RandomForest
+from sklearn.ensemble import RandomForestClassifier
+clf_rf = RandomForestClassifier()
+clf_rf.fit(x_train_hog,y_train)
 
 # 6.3 sauvegarder la classifieur
 from sklearn.externals import joblib
-joblib.dump(clf_hog, 'clf_hog_v1.pkl')
+joblib.dump(clf_LinearSVC, 'clf_LinearSVC_v1.pkl')
+joblib.dump(clf_rf, 'clf_rf_v1.pkl')
