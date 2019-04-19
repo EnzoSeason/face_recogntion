@@ -128,30 +128,6 @@ def predict_img(img, nb_img):
     if len(faces_candidat) > 0:
         faces_best = select_meilleurs(faces_candidat) 
     return faces_best
-
-# Remove overlap window which can not be eliminated by IoU 
-def remove_overlap(faces_predicts):
-    if faces_predicts is None :
-        return
-    faces_sort = np.array(faces_predicts[np.argsort(faces_predicts[:,5])])
-    faces = []
-    faces.append(faces_sort[len(faces_sort)-1])
-    for i in range(len(faces_sort)-2, -1, -1):
-        new_face = True
-        for img_face in faces:
-            down_left_face = img_face[1]+img_face[3]
-            up_right_face = img_face[2]+img_face[4]
-            down_lef_new = faces_sort[i, 1] + faces_sort[i, 3]
-            up_right_new = faces_sort[i, 2] + faces_sort[i, 4]
-            if np.all(np.less_equal(img_face[1:3], faces_sort[i, 1:3])):
-                if down_left_face>=down_lef_new and up_right_face>=up_right_new:
-                    new_face = False
-            elif np.all(np.less_equal(faces_sort[i, 1:3], img_face[1:3])): 
-                if down_left_face<=down_lef_new and up_right_face<=up_right_new:
-                    new_face = False
-        if new_face == True:
-            faces.append(faces_sort[i])
-    return np.array(faces)
  
 #plot
 import matplotlib.pyplot as plt
