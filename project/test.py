@@ -4,7 +4,7 @@
 Created on Tue Apr  9 16:49:30 2019
 Le but de ce fichier: 
 1. la détection de visages par fenêtre glissante
-@author: jijie liu
+@author: jijie liu, Zhiqi KANG
 """
 import numpy as np
 
@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.externals import joblib
 clf_LinearSVC = joblib.load('clf_LinearSVC_v1.pkl')
 clf_rf = joblib.load('clf_rf_v1.pkl')
-clf_svc = joblib.load('clf_svc_v1.pkl')
+# clf_svc = joblib.load('clf_svc_v1.pkl')
 # 1. obtenir les images originales
 from skimage import io, util, color
 img_raw = []
@@ -25,8 +25,7 @@ for i in range(n_total):
     img_raw.append(im)
 
 # 2. créer l'algo de "fênetre glissant"
-# Dans cette partie, on commence à utiliser une image.
-
+# 2.1 créer la fonction pour calculer l'aire de recouvrement
 def calcul_aire_recouvrement(fenetre_a, fenetre_b):
     IoU = 0
     position_h_a = fenetre_a[0]
@@ -56,15 +55,15 @@ def calcul_aire_recouvrement(fenetre_a, fenetre_b):
         aire_b = h_b*l_b
         IoU = intersec_area/(aire_a+aire_b-intersec_area)
     return IoU
-
+# 2.2 créer la fonction pour les fênetres glissantes
 from skimage.feature import hog
 def execute_fenetre_glissante(clf_name, img, nb_img):  
     if clf_name == 'LinearSVC':
         clf = clf_LinearSVC
     if clf_name == 'rf':
         clf = clf_rf
-    if clf_name == 'svc':
-        clf = clf_svc
+    #if clf_name == 'svc':
+    #    clf = clf_svc
     h_fixed = 120
     l_fixed = 80
     # On utilise une image pour créer l'algo
@@ -72,8 +71,8 @@ def execute_fenetre_glissante(clf_name, img, nb_img):
     idx = 0
     faces_predicts = np.empty((0, 6))
     # 2.1 un itération pour trouver tous les fênetres qui pouvent obtenir les visgae.
-    for h in range(0, img.shape[0]-h_fixed, 15):
-        for l in range(0, img.shape[1]-l_fixed, 10):
+    for h in range(0, img.shape[0]-h_fixed, 30):
+        for l in range(0, img.shape[1]-l_fixed, 20):
             # coordonnées (ligne, colonne) du coin supérieure gauche de la boîte
             # Ils sont (o_h, o_l)
             img_fenetre = img[h: h + h_fixed, l: l + l_fixed]
@@ -88,12 +87,12 @@ def execute_fenetre_glissante(clf_name, img, nb_img):
                     x_predict_proba = clf.predict_proba(feature_hog.reshape(1, -1))
                     score = x_predict_proba[0][1]
                 # stocker les informations de la img_fenetre
-                # il faut faire attention sur la format de la première élément !
                 face = np.array([nb_img, int(h), int(l), int(h_fixed), int(l_fixed), score])
                 faces_predicts = np.concatenate((faces_predicts, face.reshape(1,6)))
                 idx += 1    
     return faces_predicts
- 
+
+# 2.3 supprimier les doublons, et choisir les meilleurs visages 
 def select_meilleurs(faces_candidat):
     faces_sort = np.array(faces_candidat[np.argsort(faces_candidat[:,5])])
     faces = []
@@ -104,6 +103,7 @@ def select_meilleurs(faces_candidat):
             f1 = np.copy(img_face[1:5])
             f2 = np.copy(faces_sort[i][1:5])
             aire = calcul_aire_recouvrement(f1,f2)
+            # si l'aire de recouvrement > 0.1, cette visage est déjà stockée.
             if aire > 0.1:
                 new_face = False
                 break
@@ -112,8 +112,12 @@ def select_meilleurs(faces_candidat):
     faces = np.array(faces)
     return faces
 
+# 2.4 utiliser la fonction "execute_fenetre_glissante" et la fonction "select_meilleurs"
+# pour predicter les visages    
 def predict_img(clf, img, nb_img):
     from skimage.transform import  rescale
+    # on fixe la taile de la  boîte englobante de visages.
+    # on change la taile d'image par ratios
     ratios = [0.1, 0.3, 0.6, 0.8, 1, 1.2, 1.5, 2]    
     faces_candidat = np.empty((0,6))
     for ratio in ratios:
@@ -129,41 +133,14 @@ def predict_img(clf, img, nb_img):
         print(faces_best)
     return faces_best
 
-#plot
-import matplotlib.pyplot as plt
-def draw_int(I, coors):
-    Irgb = color.gray2rgb(I)
-    for coor in coors:
-        for line in range(coor[1], coor[1]+coor[3]):
-            Irgb[line,coor[2],:] = [0, 1, 0]
-            Irgb[line,coor[2]+coor[4],:] = [0, 1, 0]
-        for column in range(coor[2], coor[2]+coor[4]):
-            Irgb[coor[1],column,:] = [0, 1, 0]
-            Irgb[coor[1]+coor[3],column,:] = [0, 1, 0]
-    return Irgb
-
-#pred_faces = predict_img('rf', img_raw[34], 1)
-#plt.figure()
-#plt.imshow(draw_int(img_raw[34], pred_faces[:, 0:5].astype(int)))
-
-def extract_face(img, coor, path):
-    ligne = int(coor[1])
-    colonne = int(coor[2])
-    h = int(coor[3])
-    l = int(coor[4])
-    face = np.zeros((h, l))
-    for i in np.arange(ligne, ligne+h):
-        for j in np.arange(colonne, colonne+l):
-            face[i-ligne, j-colonne] = img[i, j]
-    #Perform Gaussian smoothing to avoid aliasing artifacts
-    io.imsave(path, face)
-    return 0
-
+# 3. predicter les visages et les stocker dans le fichier
 faces = []
-for i in np.arange(326,327):
+for i in np.arange(0,500):
         print("-------" + str(i) + "-------")
-        i_faces = predict_img('svc',img_raw[i], i)
-        faces.append(i_faces)
+        i_faces = predict_img('LinearSVC',img_raw[i], i+1)
         if i_faces is not None:    
-            for j in range(len(i_faces)):
-                extract_face(img_raw[i], i_faces[j, 0:6], './faces/%04d_%d.jpg'%(i,j))
+            for face_dec in i_faces:
+                faces.append(face_dec)
+
+faces = np.array(faces)            
+output = np.savetxt('detection.txt', faces)

@@ -6,7 +6,7 @@ Le but de ce fichier
 1. générer les exemples postifs et negetifs des visages
 2. générer la classifier des visages 
 
-@author: jijie liu
+@author: jijie liu, Zhiqi KANG
 """            
 import numpy as np
 
@@ -24,7 +24,7 @@ for i in range(n_total):
     img_raw.append(im)
     
 # 2. obtenir les visages
-# On double les nnombre des visages par stoker les visages inversés.    
+# On double les nombre des visages par stoker les visages inversés.    
 img_target = []
 for img in label:
     idx = int(img[0])
@@ -35,6 +35,7 @@ for img in label:
     sub_img = img_raw[idx-1][o_h :o_h + h, o_l : o_l + l]
     im_inverse = np.zeros(sub_img.shape)
     for i in range(sub_img.shape[1]):
+        # On met la première colonne à la dernier colonne, etc
         im_inverse[:,sub_img.shape[1]-i-1] = sub_img[:,i]
     img_target.append(sub_img)
     img_target.append(im_inverse)
@@ -144,15 +145,14 @@ for i in range(len(img_raw)):
                 nb_img_neg += 1
                 #io.imsave("./face_recogntion/neg/%d_%d.jpg"%(i,nb_img_neg), img_neg)
             
-# 6. Apprendre un classifieur de visage 
+# 6. Evaluaiton de la classifieur
 data_train = data_train_pos + data_train_neg
 train = np.array(data_train)
 
 n_pos = len(data_train_pos)
 n_neg = len(data_train_neg)
 n_train = n_pos + n_neg
-
-# 6.1.  On utilise l'algo HOG pour améliorer les données de training   
+# On utilise l'algo HOG pour améliorer les données de training   
 from skimage.feature import hog
 # nb of the output of the function hog
 n_dim = 8424
@@ -160,23 +160,71 @@ n_dim = 8424
 x_train_hog = np.zeros((n_train, n_dim))
 for i in range(n_train):
     x_train_hog[i,:] = hog(train[i,:,:], block_norm='L2-Hys', transform_sqrt=True)     
-y_train = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
+y = np.concatenate((np.ones(n_pos), -np.ones(n_neg)))
 
-# 6.2 training
+# Dans cette partie, on évalue la classifieur du "LinearSVC"
+# 6.1 séparer "training data" à "training set" et "validation set"
+x_train = np.copy(x_train_hog)
+y_train = np.copy(y)
+from sklearn.model_selection import train_test_split
+X_train, X_valid, y_train, y_valid = train_test_split(x_train, y_train, 
+                                                    test_size=0.33)
+# 6.2 training dataon the training set
 from sklearn.svm import LinearSVC, SVC
-# 6.2.1 LinearSVC
-clf_LinearSVC = LinearSVC()
-clf_LinearSVC.fit(x_train_hog,y_train)
-# 6.2.2 RandomForest
+clf_valid = LinearSVC()
+clf_valid.fit(X_train, y_train)
+y_pred = clf_valid.predict(X_valid)
+
+# 6.3 average_precision
+from sklearn.metrics import average_precision_score
+average_precision = average_precision_score(y_pred, y_valid)
+
+# 6.4 plot precision/recall curve
+from sklearn.metrics import precision_recall_curve
+import matplotlib.pyplot as plt
+precision, recall, _ = precision_recall_curve(y_pred, y_valid)
+# 'post': The y value is continued constantly to the right from every x position, 
+# i.e. the interval [x[i], x[i+1]) has the value y[i]
+plt.step(recall, precision, color='b', where='post')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.ylim([0.0, 1.05])
+plt.xlim([0.0, 1.0])
+plt.title('2-class Precision-Recall curve: AP={0:0.2f}'.format(average_precision))
+
+# 7. Apprendre un classifieur de visage 
+# 7.1 training
+# 7.1.1 LinearSVC
+x_train = np.copy(x_train_hog)
+y_train = np.copy(y)
+X_train, X_valid, y_train, y_valid = train_test_split(x_train, y_train, 
+                                                    test_size=0.33)
+clf_valid = LinearSVC()
+# cette iteration est pour mettre les faux positifs dans "training set"
+# Elle peut améliorer la performence de la classifieur
+for turn in range(3):
+    clf_valid = LinearSVC()
+    clf_valid.fit(X_train, y_train)
+    y_pred = clf_valid.predict(X_valid)
+    # trouver les faux positifs
+    faux_positifs_index = np.logical_and(y_pred[:] == 1, y_valid[:] == -1)
+    print(np.sum(faux_positifs_index))
+    faux_positifs = X_valid[faux_positifs_index] 
+    # Prendre tous les faux positifs comme exemples négatifs supplémentaires.
+    X_train = np.vstack((X_train,faux_positifs))
+    y_train = np.concatenate((y_train, -np.ones([np.sum(faux_positifs_index)])))
+    
+# 7.1.2 RandomForest
 from sklearn.ensemble import RandomForestClassifier
 clf_rf = RandomForestClassifier()
-clf_rf.fit(x_train_hog,y_train)
-# 6.2.3 SVC
-clf_svc = SVC(gamma='auto')
-clf_svc.fit(x_train_hog,y_train)
+clf_rf.fit(x_train_hog,y)
+# 7.1.3 SVC
+# Ça prend beaucoup du temps pour le générer
+# clf_svc = SVC(gamma='auto')
+# clf_svc.fit(x_train_hog,y)
 
-# 6.3 sauvegarder la classifieur
+# 7.2 sauvegarder la classifieur
 from sklearn.externals import joblib
-joblib.dump(clf_LinearSVC, 'clf_LinearSVC_v1.pkl')
+joblib.dump(clf_valid, 'clf_LinearSVC_v1.pkl')
 joblib.dump(clf_rf, 'clf_rf_v1.pkl')
-joblib.dump(clf_svc, 'clf_svc_v1.pkl')
+# joblib.dump(clf_svc, 'clf_svc_v1.pkl')
